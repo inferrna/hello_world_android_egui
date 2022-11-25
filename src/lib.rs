@@ -1,19 +1,25 @@
 use std::iter;
 use std::time::Instant;
-
+use std::env;
 use ::egui::FontDefinitions;
 use chrono::Timelike;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
+use winit::event_loop::EventLoop;
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use wgpu::CompositeAlphaMode;
+use log::{error, warn};
+use wgpu::{CompositeAlphaMode, TextureFormat};
 use winit::event::Event::*;
+use winit::event::StartCause;
 use winit::event_loop::ControlFlow;
+use winit::platform::run_return::EventLoopExtRunReturn;
+
 const INITIAL_WIDTH: u32 = 1920;
 const INITIAL_HEIGHT: u32 = 1080;
 
 
 /// A custom event type for the winit app.
-enum Event {
+#[derive(Debug,Clone,Copy)]
+pub enum Event {
     RequestRedraw,
 }
 
@@ -23,61 +29,44 @@ struct ExampleRepaintSignal(std::sync::Mutex<winit::event_loop::EventLoopProxy<E
 
 impl epi::backend::RepaintSignal for ExampleRepaintSignal {
     fn request_repaint(&self) {
-        self.0.lock().unwrap().send_event(Event::RequestRedraw).ok();
+        self.0.lock()
+            .unwrap_or_else(|e| panic!("Failed to lock guard at {} line {} with error\n{}", file!(), line!(), e))
+            .send_event(Event::RequestRedraw).ok();
     }
 }
 
-#[cfg(target_os = "android")] // hide console window on Windows in release
+#[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    #[cfg(debug_assertions)]{
+        env::set_var("RUST_BACKTRACE", "full");
+        android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Trace));
+    }
     use winit::platform::android::EventLoopBuilderExtAndroid;
-
     let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event().with_android_app(app).build();
+    main(event_loop);
+}
+pub fn main(mut event_loop: EventLoop<Event>){
+    //'Cannot get the native window, it's null and will always be null before Event::Resumed and after Event::Suspended. Make sure you only call this function between those events.', ..../winit-c2fdb27092aba5a7/418cc44/src/platform_impl/android/mod.rs:1028:13
+    warn!("Winit build window at {} line {}", file!(), line!());
     let window = winit::window::WindowBuilder::new()
-        .with_decorations(true)
-        .with_resizable(true)
+        .with_decorations(!cfg!(android)) /* !cfg!(android) */
+        .with_resizable(!cfg!(android))
         .with_transparent(false)
         .with_title("egui-wgpu_winit example")
-        .with_inner_size(winit::dpi::PhysicalSize {
-            width: INITIAL_WIDTH,
-            height: INITIAL_HEIGHT,
-        })
         .build(&event_loop)
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Failed to init window at {} line {} with error\n{:?}", file!(), line!(), e));
 
+    warn!("WGPU new instance at {} line {}", file!(), line!());
     let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
-    let surface = unsafe { instance.create_surface(&window) };
 
-    // WGPU 0.11+ support force fallback (if HW implementation not supported), set it to true or false (optional).
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: Some(&surface),
-        force_fallback_adapter: false,
-    }))
-        .unwrap();
+    let mut size = window.inner_size();
+    let outer_size = window.outer_size();
 
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            features: wgpu::Features::default(),
-            limits: wgpu::Limits::default(),
-            label: None,
-        },
-        None,
-    ))
-        .unwrap();
+    warn!("outer_size = {:?}", outer_size);
+    warn!("size = {:?}", size);
 
-    let size = window.inner_size();
-    let surface_format = surface.get_supported_formats(&adapter)[0];
-    let mut surface_config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: surface_format,
-        width: size.width as u32,
-        height: size.height as u32,
-        present_mode: wgpu::PresentMode::Fifo,
-        alpha_mode: CompositeAlphaMode::Auto
-    };
-    surface.configure(&device, &surface_config);
-
+    warn!("Platform new at {} line {}", file!(), line!());
     // We use the egui_winit_platform crate as the platform.
     let mut platform = Platform::new(PlatformDescriptor {
         physical_width: size.width as u32,
@@ -87,17 +76,103 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
         style: Default::default(),
     });
 
+    event_loop.run_return(|main_event, tgt, control_flow|{
+        control_flow.set_poll();
+        warn!("Got event: {:?} at {} line {}", &main_event, file!(), line!());
+        match main_event {
+            NewEvents(e) => match e {
+                StartCause::ResumeTimeReached { .. } => {}
+                StartCause::WaitCancelled { .. } => {}
+                StartCause::Poll => {}
+                StartCause::Init => {}
+            }
+            WindowEvent { window_id, ref event } =>
+                if let winit::event::WindowEvent::Resized(r) = event {
+                    size = *r;
+                }
+            DeviceEvent { .. } => {}
+            UserEvent(_) => {}
+            Suspended => {control_flow.set_poll();}
+            Resumed => {
+                if let Some(primary_mon) = tgt.primary_monitor() {
+                    size = primary_mon.size();
+                    window.set_inner_size(size);
+                    warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                } else if let Some(other_mon) = tgt.available_monitors().next() {
+                    size = other_mon.size();
+                    window.set_inner_size(size);
+                    warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                }
+                control_flow.set_exit();
+            }
+            MainEventsCleared => {}
+            RedrawRequested(rdr) => {}
+            RedrawEventsCleared => {}
+            LoopDestroyed => {}
+        };
+        platform.handle_event(&main_event);
+    });
+
+    warn!("Platform renew at {} line {}", file!(), line!());
+    // We use the egui_winit_platform crate as the platform.
+    let mut platform = Platform::new(PlatformDescriptor {
+        physical_width: size.width as u32,
+        physical_height: size.height as u32,
+        scale_factor: window.scale_factor(),
+        font_definitions: FontDefinitions::default(),
+        style: Default::default(),
+    });
+
+    warn!("WGPU new surface at {} line {}", file!(), line!());
+    let surface = unsafe { instance.create_surface(&window) };
+
+    warn!("instance request_adapter at {} line {}", file!(), line!());
+    // WGPU 0.11+ support force fallback (if HW implementation not supported), set it to true or false (optional).
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: Some(&surface),
+        force_fallback_adapter: false,
+    }))
+        .unwrap_or_else(|| panic!("Failed get adapter at {} line {}", file!(), line!()));
+
+    warn!("adapter request_device at {} line {}", file!(), line!());
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            features: wgpu::Features::default(),
+            limits: wgpu::Limits::default(),
+            label: None,
+        },
+        None,
+    ))
+        .unwrap_or_else(|e| panic!("Failed to request device at {} line {} with error\n{:?}", file!(), line!(), e));
+
+    let surface_format = surface.get_supported_formats(&adapter)[0];
+    let mut surface_config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: surface_format,
+        width: size.width as u32,
+        height: size.height as u32,
+        present_mode: wgpu::PresentMode::Fifo,
+        alpha_mode: CompositeAlphaMode::Auto
+    };
+
+    warn!("surface configure at {} line {}", file!(), line!());
+    surface.configure(&device, &surface_config);
+
+    warn!("RenderPass new at {} line {}", file!(), line!());
     // We use the egui_wgpu_backend crate as the render backend.
     let mut egui_rpass = RenderPass::new(&device, surface_format, 1);
 
+    warn!("DemoWindows default at {} line {}", file!(), line!());
     // Display the demo application that ships with egui.
     let mut demo_app = egui_demo_lib::DemoWindows::default();
 
     let start_time = Instant::now();
+    warn!("Enter the loop");
     event_loop.run(move |event, _, control_flow| {
         // Pass the winit events to the platform integration.
+        warn!("Got event: {:?} at {} line {}", &event, file!(), line!());
         platform.handle_event(&event);
-
         match event {
             RedrawRequested(..) => {
                 platform.update_time(start_time.elapsed().as_secs_f64());
@@ -107,11 +182,11 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
                     Err(wgpu::SurfaceError::Outdated) => {
                         // This error occurs when the app is minimized on Windows.
                         // Silently return here to prevent spamming the console with:
-                        // "The underlying surface has changed, and therefore the swap chain must be updated"
+                        error!("The underlying surface has changed, and therefore the swap chain must be updated");
                         return;
                     }
                     Err(e) => {
-                        eprintln!("Dropped frame with error: {}", e);
+                        error!("Dropped frame with error: {}", e);
                         return;
                     }
                 };
@@ -154,7 +229,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
                         &screen_descriptor,
                         Some(wgpu::Color::BLACK),
                     )
-                    .unwrap();
+                    .unwrap_or_else(|e| panic!("Failed to render pass at {} line {} with error\n{:?}", file!(), line!(), e));
                 // Submit the commands.
                 queue.submit(iter::once(encoder.finish()));
 
@@ -191,6 +266,16 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
                 }
                 _ => {}
             },
+            Resumed => {
+                platform = Platform::new(PlatformDescriptor {
+                    physical_width: size.width as u32,
+                    physical_height: size.height as u32,
+                    scale_factor: window.scale_factor(),
+                    font_definitions: FontDefinitions::default(),
+                    style: Default::default(),
+                });
+            },
+            Suspended => (),
             _ => (),
         }
     });

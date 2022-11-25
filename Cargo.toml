@@ -16,12 +16,20 @@ epi = "0.17.0"
 egui_winit_platform = {path = "/home/inferno/.dev/egui_winit_platform"}
 chrono = "0.4"
 pollster = "0.2"
-winit = { git="https://github.com/rust-windowing/winit.git" , features = ["android-native-activity"] }
 #winit = "0.27.1"
 wgpu = "0.14.0"
 tracing-subscriber = "0.3"
 egui_demo_lib = "0.19"
+log = "*"
+
+[target.'cfg(debug_assertions)'.dependencies]
+simple_logger = "*"
+android_logger = "0.11.1"
+
+# This dependency will only be included when targeting Android
+[target.'cfg(not(target_os = "android"))'.dependencies]
+winit = { git="https://github.com/rust-windowing/winit.git" }
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
-#ndk-glue = "0.7.0" # Substitute this with the latest ndk-glue version you wish to use
+winit = { git="https://github.com/rust-windowing/winit.git", default-features = false, features = ["android-native-activity"] }
