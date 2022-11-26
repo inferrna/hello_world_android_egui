@@ -1,21 +1,18 @@
 use std::iter;
 use std::time::Instant;
-use std::env;
 use ::egui::FontDefinitions;
 use chrono::Timelike;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use winit::event_loop::EventLoop;
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use log::{error, warn};
-use wgpu::{CompositeAlphaMode, TextureFormat};
+use wgpu::{CompositeAlphaMode};
 use winit::event::Event::*;
-use winit::event::StartCause;
 use winit::event_loop::ControlFlow;
-use winit::platform::run_return::EventLoopExtRunReturn;
 
-const INITIAL_WIDTH: u32 = 1920;
-const INITIAL_HEIGHT: u32 = 1080;
 
+#[cfg(target_os = "android")]
+use winit::{platform::run_return::EventLoopExtRunReturn, platform::android::EventLoopBuilderExtAndroid, event::StartCause};
 
 /// A custom event type for the winit app.
 #[derive(Debug,Clone,Copy)]
@@ -39,10 +36,9 @@ impl epi::backend::RepaintSignal for ExampleRepaintSignal {
 #[no_mangle]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
     #[cfg(debug_assertions)]{
-        env::set_var("RUST_BACKTRACE", "full");
+        std::env::set_var("RUST_BACKTRACE", "full");
         android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Trace));
     }
-    use winit::platform::android::EventLoopBuilderExtAndroid;
     let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event().with_android_app(app).build();
     main(event_loop);
 }
@@ -58,7 +54,7 @@ pub fn main(mut event_loop: EventLoop<Event>){
         .unwrap_or_else(|e| panic!("Failed to init window at {} line {} with error\n{:?}", file!(), line!(), e));
 
     warn!("WGPU new instance at {} line {}", file!(), line!());
-    let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+    let mut instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
 
     let mut size = window.inner_size();
     let outer_size = window.outer_size();
@@ -66,65 +62,69 @@ pub fn main(mut event_loop: EventLoop<Event>){
     warn!("outer_size = {:?}", outer_size);
     warn!("size = {:?}", size);
 
-    warn!("Platform new at {} line {}", file!(), line!());
+    warn!("Create platform at {} line {}", file!(), line!());
     // We use the egui_winit_platform crate as the platform.
     let mut platform = Platform::new(PlatformDescriptor {
-        physical_width: size.width as u32,
-        physical_height: size.height as u32,
-        scale_factor: window.scale_factor(),
-        font_definitions: FontDefinitions::default(),
-        style: Default::default(),
-    });
+            physical_width: size.width as u32,
+            physical_height: size.height as u32,
+            scale_factor: window.scale_factor(),
+            font_definitions: FontDefinitions::default(),
+            style: Default::default(),
+        });
 
-    event_loop.run_return(|main_event, tgt, control_flow|{
-        control_flow.set_poll();
-        warn!("Got event: {:?} at {} line {}", &main_event, file!(), line!());
-        match main_event {
-            NewEvents(e) => match e {
-                StartCause::ResumeTimeReached { .. } => {}
-                StartCause::WaitCancelled { .. } => {}
-                StartCause::Poll => {}
-                StartCause::Init => {}
-            }
-            WindowEvent { window_id, ref event } =>
-                if let winit::event::WindowEvent::Resized(r) = event {
-                    size = *r;
+    #[cfg(target_os = "android")]
+    let mut platform = {
+        //Just find the actual screen size on android
+        event_loop.run_return(|main_event, tgt, control_flow| {
+            control_flow.set_poll();
+            warn!("Got event: {:?} at {} line {}", &main_event, file!(), line!());
+            match main_event {
+                NewEvents(e) => match e {
+                    StartCause::ResumeTimeReached { .. } => {}
+                    StartCause::WaitCancelled { .. } => {}
+                    StartCause::Poll => {}
+                    StartCause::Init => {}
                 }
-            DeviceEvent { .. } => {}
-            UserEvent(_) => {}
-            Suspended => {control_flow.set_poll();}
-            Resumed => {
-                if let Some(primary_mon) = tgt.primary_monitor() {
-                    size = primary_mon.size();
-                    window.set_inner_size(size);
-                    warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
-                } else if let Some(other_mon) = tgt.available_monitors().next() {
-                    size = other_mon.size();
-                    window.set_inner_size(size);
-                    warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                WindowEvent { window_id, ref event } =>
+                    if let winit::event::WindowEvent::Resized(r) = event {
+                        size = *r;
+                    }
+                DeviceEvent { .. } => {}
+                UserEvent(_) => {}
+                Suspended => { control_flow.set_poll(); }
+                Resumed => {
+                    if let Some(primary_mon) = tgt.primary_monitor() {
+                        size = primary_mon.size();
+                        window.set_inner_size(size);
+                        warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                    } else if let Some(other_mon) = tgt.available_monitors().next() {
+                        size = other_mon.size();
+                        window.set_inner_size(size);
+                        warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                    }
+                    control_flow.set_exit();
                 }
-                control_flow.set_exit();
-            }
-            MainEventsCleared => {}
-            RedrawRequested(rdr) => {}
-            RedrawEventsCleared => {}
-            LoopDestroyed => {}
-        };
-        platform.handle_event(&main_event);
-    });
+                MainEventsCleared => {}
+                RedrawRequested(rdr) => {}
+                RedrawEventsCleared => {}
+                LoopDestroyed => {}
+            };
+            platform.handle_event(&main_event);
+        });
 
-    warn!("Platform renew at {} line {}", file!(), line!());
-    // We use the egui_winit_platform crate as the platform.
-    let mut platform = Platform::new(PlatformDescriptor {
-        physical_width: size.width as u32,
-        physical_height: size.height as u32,
-        scale_factor: window.scale_factor(),
-        font_definitions: FontDefinitions::default(),
-        style: Default::default(),
-    });
+        warn!("Recreate platform at {} line {}", file!(), line!());
+        // We use the egui_winit_platform crate as the platform.
+        Platform::new(PlatformDescriptor {
+            physical_width: size.width as u32,
+            physical_height: size.height as u32,
+            scale_factor: window.scale_factor(),
+            font_definitions: FontDefinitions::default(),
+            style: Default::default(),
+        })
+    };
 
     warn!("WGPU new surface at {} line {}", file!(), line!());
-    let surface = unsafe { instance.create_surface(&window) };
+    let mut surface = unsafe { instance.create_surface(&window) };
 
     warn!("instance request_adapter at {} line {}", file!(), line!());
     // WGPU 0.11+ support force fallback (if HW implementation not supported), set it to true or false (optional).
@@ -152,7 +152,7 @@ pub fn main(mut event_loop: EventLoop<Event>){
         format: surface_format,
         width: size.width as u32,
         height: size.height as u32,
-        present_mode: wgpu::PresentMode::Fifo,
+        present_mode: wgpu::PresentMode::AutoNoVsync,
         alpha_mode: CompositeAlphaMode::Auto
     };
 
@@ -168,6 +168,9 @@ pub fn main(mut event_loop: EventLoop<Event>){
     let mut demo_app = egui_demo_lib::DemoWindows::default();
 
     let start_time = Instant::now();
+
+    let mut in_bad_state = false;
+
     warn!("Enter the loop");
     event_loop.run(move |event, _, control_flow| {
         // Pass the winit events to the platform integration.
@@ -183,6 +186,14 @@ pub fn main(mut event_loop: EventLoop<Event>){
                         // This error occurs when the app is minimized on Windows.
                         // Silently return here to prevent spamming the console with:
                         error!("The underlying surface has changed, and therefore the swap chain must be updated");
+                        in_bad_state = true;
+                        return;
+                    }
+                    Err(wgpu::SurfaceError::Lost) => {
+                        // This error occurs when the app is minimized on Windows.
+                        // Silently return here to prevent spamming the console with:
+                        error!("LOST surface, drop frame. Originally: \"The swap chain has been lost and needs to be recreated\"");
+                        in_bad_state = true;
                         return;
                     }
                     Err(e) => {
@@ -267,13 +278,14 @@ pub fn main(mut event_loop: EventLoop<Event>){
                 _ => {}
             },
             Resumed => {
-                platform = Platform::new(PlatformDescriptor {
-                    physical_width: size.width as u32,
-                    physical_height: size.height as u32,
-                    scale_factor: window.scale_factor(),
-                    font_definitions: FontDefinitions::default(),
-                    style: Default::default(),
-                });
+                if in_bad_state {
+                    //https://github.com/gfx-rs/wgpu/issues/2302
+                    warn!("WGPU new surface at {} line {}", file!(), line!());
+                    surface = unsafe { instance.create_surface(&window) };
+                    warn!("surface configure at {} line {}", file!(), line!());
+                    surface.configure(&device, &surface_config);
+                    in_bad_state = false;
+                }
             },
             Suspended => (),
             _ => (),
