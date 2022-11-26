@@ -1,21 +1,23 @@
-use std::iter;
-use std::time::Instant;
 use ::egui::FontDefinitions;
 use chrono::Timelike;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
-use winit::event_loop::EventLoop;
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use log::{error, warn};
-use wgpu::{CompositeAlphaMode};
+use std::iter;
+use std::time::Instant;
+use wgpu::CompositeAlphaMode;
 use winit::event::Event::*;
 use winit::event_loop::ControlFlow;
-
+use winit::event_loop::EventLoop;
 
 #[cfg(target_os = "android")]
-use winit::{platform::run_return::EventLoopExtRunReturn, platform::android::EventLoopBuilderExtAndroid, event::StartCause};
+use winit::{
+    event::StartCause, platform::android::EventLoopBuilderExtAndroid,
+    platform::run_return::EventLoopExtRunReturn,
+};
 
 /// A custom event type for the winit app.
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Event {
     RequestRedraw,
 }
@@ -26,23 +28,37 @@ struct ExampleRepaintSignal(std::sync::Mutex<winit::event_loop::EventLoopProxy<E
 
 impl epi::backend::RepaintSignal for ExampleRepaintSignal {
     fn request_repaint(&self) {
-        self.0.lock()
-            .unwrap_or_else(|e| panic!("Failed to lock guard at {} line {} with error\n{}", file!(), line!(), e))
-            .send_event(Event::RequestRedraw).ok();
+        self.0
+            .lock()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to lock guard at {} line {} with error\n{}",
+                    file!(),
+                    line!(),
+                    e
+                )
+            })
+            .send_event(Event::RequestRedraw)
+            .ok();
     }
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
-    #[cfg(debug_assertions)]{
+    #[cfg(debug_assertions)]
+    {
         std::env::set_var("RUST_BACKTRACE", "full");
-        android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Trace));
+        android_logger::init_once(
+            android_logger::Config::default().with_min_level(log::Level::Trace),
+        );
     }
-    let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event().with_android_app(app).build();
+    let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event()
+        .with_android_app(app)
+        .build();
     main(event_loop);
 }
-pub fn main(mut event_loop: EventLoop<Event>){
+pub fn main(mut event_loop: EventLoop<Event>) {
     //'Cannot get the native window, it's null and will always be null before Event::Resumed and after Event::Suspended. Make sure you only call this function between those events.', ..../winit-c2fdb27092aba5a7/418cc44/src/platform_impl/android/mod.rs:1028:13
     warn!("Winit build window at {} line {}", file!(), line!());
     let window = winit::window::WindowBuilder::new()
@@ -51,7 +67,14 @@ pub fn main(mut event_loop: EventLoop<Event>){
         .with_transparent(false)
         .with_title("egui-wgpu_winit example")
         .build(&event_loop)
-        .unwrap_or_else(|e| panic!("Failed to init window at {} line {} with error\n{:?}", file!(), line!(), e));
+        .unwrap_or_else(|e| {
+            panic!(
+                "Failed to init window at {} line {} with error\n{:?}",
+                file!(),
+                line!(),
+                e
+            )
+        });
 
     warn!("WGPU new instance at {} line {}", file!(), line!());
     let mut instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
@@ -65,42 +88,63 @@ pub fn main(mut event_loop: EventLoop<Event>){
     warn!("Create platform at {} line {}", file!(), line!());
     // We use the egui_winit_platform crate as the platform.
     let mut platform = Platform::new(PlatformDescriptor {
-            physical_width: size.width as u32,
-            physical_height: size.height as u32,
-            scale_factor: window.scale_factor(),
-            font_definitions: FontDefinitions::default(),
-            style: Default::default(),
-        });
+        physical_width: size.width as u32,
+        physical_height: size.height as u32,
+        scale_factor: window.scale_factor(),
+        font_definitions: FontDefinitions::default(),
+        style: Default::default(),
+    });
 
     #[cfg(target_os = "android")]
     let mut platform = {
         //Just find the actual screen size on android
         event_loop.run_return(|main_event, tgt, control_flow| {
             control_flow.set_poll();
-            warn!("Got event: {:?} at {} line {}", &main_event, file!(), line!());
+            warn!(
+                "Got event: {:?} at {} line {}",
+                &main_event,
+                file!(),
+                line!()
+            );
             match main_event {
                 NewEvents(e) => match e {
                     StartCause::ResumeTimeReached { .. } => {}
                     StartCause::WaitCancelled { .. } => {}
                     StartCause::Poll => {}
                     StartCause::Init => {}
-                }
-                WindowEvent { window_id, ref event } =>
+                },
+                WindowEvent {
+                    window_id,
+                    ref event,
+                } => {
                     if let winit::event::WindowEvent::Resized(r) = event {
                         size = *r;
                     }
+                }
                 DeviceEvent { .. } => {}
                 UserEvent(_) => {}
-                Suspended => { control_flow.set_poll(); }
+                Suspended => {
+                    control_flow.set_poll();
+                }
                 Resumed => {
                     if let Some(primary_mon) = tgt.primary_monitor() {
                         size = primary_mon.size();
                         window.set_inner_size(size);
-                        warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                        warn!(
+                            "Set to new size: {:?} at {} line {}",
+                            &size,
+                            file!(),
+                            line!()
+                        );
                     } else if let Some(other_mon) = tgt.available_monitors().next() {
                         size = other_mon.size();
                         window.set_inner_size(size);
-                        warn!("Set to new size: {:?} at {} line {}", &size, file!(), line!());
+                        warn!(
+                            "Set to new size: {:?} at {} line {}",
+                            &size,
+                            file!(),
+                            line!()
+                        );
                     }
                     control_flow.set_exit();
                 }
@@ -133,7 +177,7 @@ pub fn main(mut event_loop: EventLoop<Event>){
         compatible_surface: Some(&surface),
         force_fallback_adapter: false,
     }))
-        .unwrap_or_else(|| panic!("Failed get adapter at {} line {}", file!(), line!()));
+    .unwrap_or_else(|| panic!("Failed get adapter at {} line {}", file!(), line!()));
 
     warn!("adapter request_device at {} line {}", file!(), line!());
     let (device, queue) = pollster::block_on(adapter.request_device(
@@ -144,7 +188,14 @@ pub fn main(mut event_loop: EventLoop<Event>){
         },
         None,
     ))
-        .unwrap_or_else(|e| panic!("Failed to request device at {} line {} with error\n{:?}", file!(), line!(), e));
+    .unwrap_or_else(|e| {
+        panic!(
+            "Failed to request device at {} line {} with error\n{:?}",
+            file!(),
+            line!(),
+            e
+        )
+    });
 
     let surface_format = surface.get_supported_formats(&adapter)[0];
     let mut surface_config = wgpu::SurfaceConfiguration {
@@ -153,7 +204,7 @@ pub fn main(mut event_loop: EventLoop<Event>){
         width: size.width as u32,
         height: size.height as u32,
         present_mode: wgpu::PresentMode::AutoNoVsync,
-        alpha_mode: CompositeAlphaMode::Auto
+        alpha_mode: CompositeAlphaMode::Auto,
     };
 
     warn!("surface configure at {} line {}", file!(), line!());
