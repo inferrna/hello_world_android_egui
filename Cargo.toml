@@ -13,7 +13,7 @@ egui = "0.19.0"
 egui-winit = "0.19.0"
 egui_wgpu_backend = "0.20.0"
 epi = "0.17.0"
-egui_winit_platform = {path = "/home/inferno/.dev/egui_winit_platform"}
+egui_winit_platform = {git = "https://github.com/inferrna/egui_winit_platform.git"}
 chrono = "0.4"
 pollster = "0.2"
 #winit = "0.27.1"
