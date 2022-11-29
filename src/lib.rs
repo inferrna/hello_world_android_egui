@@ -1,25 +1,35 @@
 use ::egui::FontDefinitions;
-use chrono::Timelike;
+use chrono::{Timelike};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use log::{error, warn};
 use std::iter;
-use std::time::Instant;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use wgpu::CompositeAlphaMode;
 use winit::event::Event::*;
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
 
 #[cfg(target_os = "android")]
+mod android_utils;
+#[cfg(target_os = "android")]
 use winit::{
     event::StartCause, platform::android::EventLoopBuilderExtAndroid,
     platform::run_return::EventLoopExtRunReturn,
 };
+use winit::dpi::PhysicalSize;
 
 /// A custom event type for the winit app.
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
     RequestRedraw,
+}
+
+pub trait MobAppHelper {
+    fn show_keyboard(&self);
+    fn hide_keyboard(&self);
+    fn screen_size(&self) -> Option<PhysicalSize<i32>>;
 }
 
 /// This is the repaint signal type that egui needs for requesting a repaint from another thread.
@@ -53,12 +63,14 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
             android_logger::Config::default().with_min_level(log::Level::Trace),
         );
     }
+    let cloned_app = Box::new(app.clone());
     let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event()
         .with_android_app(app)
         .build();
-    main(event_loop);
+    main(event_loop, Some(cloned_app));
 }
-pub fn main(mut event_loop: EventLoop<Event>) {
+
+pub fn main(mut event_loop: EventLoop<Event>, soft_input: Option<Box<dyn MobAppHelper>>) {//Box<dyn MobAppHelper>
     //'Cannot get the native window, it's null and will always be null before Event::Resumed and after Event::Suspended. Make sure you only call this function between those events.', ..../winit-c2fdb27092aba5a7/418cc44/src/platform_impl/android/mod.rs:1028:13
     warn!("Winit build window at {} line {}", file!(), line!());
     let window = winit::window::WindowBuilder::new()
@@ -76,8 +88,13 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             )
         });
 
+    if let Some(size) = soft_input.as_ref().and_then(|mh| mh.screen_size()) {
+        window.set_inner_size(size);
+    }
+
+    //let h = event_loop.raw_display_handle().;
     warn!("WGPU new instance at {} line {}", file!(), line!());
-    let mut instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+    let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
 
     let mut size = window.inner_size();
     let outer_size = window.outer_size();
@@ -95,17 +112,18 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         style: Default::default(),
     });
 
+
     #[cfg(target_os = "android")]
-    let mut platform = {
+    if size.width<1 || size.height<1 {
         //Just find the actual screen size on android
         event_loop.run_return(|main_event, tgt, control_flow| {
             control_flow.set_poll();
             warn!(
-                "Got event: {:?} at {} line {}",
-                &main_event,
-                file!(),
-                line!()
-            );
+            "Got event: {:?} at {} line {}",
+            &main_event,
+            file!(),
+            line!()
+        );
             match main_event {
                 NewEvents(e) => match e {
                     StartCause::ResumeTimeReached { .. } => {}
@@ -131,20 +149,20 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                         size = primary_mon.size();
                         window.set_inner_size(size);
                         warn!(
-                            "Set to new size: {:?} at {} line {}",
-                            &size,
-                            file!(),
-                            line!()
-                        );
+                        "Set to new size: {:?} at {} line {}",
+                        &size,
+                        file!(),
+                        line!()
+                    );
                     } else if let Some(other_mon) = tgt.available_monitors().next() {
                         size = other_mon.size();
                         window.set_inner_size(size);
                         warn!(
-                            "Set to new size: {:?} at {} line {}",
-                            &size,
-                            file!(),
-                            line!()
-                        );
+                        "Set to new size: {:?} at {} line {}",
+                        &size,
+                        file!(),
+                        line!()
+                    );
                     }
                     control_flow.set_exit();
                 }
@@ -158,14 +176,14 @@ pub fn main(mut event_loop: EventLoop<Event>) {
 
         warn!("Recreate platform at {} line {}", file!(), line!());
         // We use the egui_winit_platform crate as the platform.
-        Platform::new(PlatformDescriptor {
+        platform = Platform::new(PlatformDescriptor {
             physical_width: size.width as u32,
             physical_height: size.height as u32,
             scale_factor: window.scale_factor(),
             font_definitions: FontDefinitions::default(),
             style: Default::default(),
-        })
-    };
+        });
+    }
 
     warn!("WGPU new surface at {} line {}", file!(), line!());
     let mut surface = unsafe { instance.create_surface(&window) };
@@ -222,6 +240,8 @@ pub fn main(mut event_loop: EventLoop<Event>) {
 
     let mut in_bad_state = false;
 
+
+    let mut last_draw = Instant::now();
     warn!("Enter the loop");
     event_loop.run(move |event, _, control_flow| {
         // Pass the winit events to the platform integration.
@@ -230,7 +250,6 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         match event {
             RedrawRequested(..) => {
                 platform.update_time(start_time.elapsed().as_secs_f64());
-
                 let output_frame = match surface.get_current_texture() {
                     Ok(frame) => frame,
                     Err(wgpu::SurfaceError::Outdated) => {
@@ -256,6 +275,11 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
+                warn!("Time since last frame: {} ms", last_draw.elapsed().as_millis());
+                if let Some(dur2sleep) = Duration::from_micros(16666).checked_sub(last_draw.elapsed()) {
+                    sleep(dur2sleep);
+                }
+                last_draw = Instant::now();
                 // Begin to draw the UI frame.
                 platform.begin_frame();
 
@@ -325,6 +349,13 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                 }
                 winit::event::WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
+                }
+                winit::event::WindowEvent::Touch(..) => {
+                    //TODO: Try keyboard from https://github.com/msiglreith/pixels-android/blob/master/src/lib.rs#L30
+                    if let Some(si) = soft_input.as_ref() {
+                        warn!("Show keyboard");
+                        si.show_keyboard();
+                    }
                 }
                 _ => {}
             },
