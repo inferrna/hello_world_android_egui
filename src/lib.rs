@@ -63,14 +63,14 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
             android_logger::Config::default().with_min_level(log::Level::Trace),
         );
     }
-    let cloned_app = Box::new(app.clone());
+    let cloned_app = app.clone();
     let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event()
         .with_android_app(app)
         .build();
     main(event_loop, Some(cloned_app));
 }
 
-pub fn main(mut event_loop: EventLoop<Event>, soft_input: Option<Box<dyn MobAppHelper>>) {//Box<dyn MobAppHelper>
+pub fn main<T: MobAppHelper + 'static>(mut event_loop: EventLoop<Event>, soft_input: Option<T>) {//Box<dyn MobAppHelper>
     //'Cannot get the native window, it's null and will always be null before Event::Resumed and after Event::Suspended. Make sure you only call this function between those events.', ..../winit-c2fdb27092aba5a7/418cc44/src/platform_impl/android/mod.rs:1028:13
     warn!("Winit build window at {} line {}", file!(), line!());
     let window = winit::window::WindowBuilder::new()
