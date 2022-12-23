@@ -32,6 +32,15 @@ winit = { git="https://github.com/rust-windowing/winit.git"}
 winit = { git="https://github.com/rust-windowing/winit.git", default-features = false, features = ["android-native-activity"] }
 jni = "*"
 
+[profile.fastdev]
+inherits = "dev"
+opt-level = 2
+lto = "thin"
+
+[package.metadata.android.signing.fastdev]
+path = "fastdev.keystore"
+keystore_password = "hBJ9ghh8MgqF95EPu"
+
 [package.metadata.android]
 build_targets = [ "armv7-linux-androideabi", "aarch64-linux-android" ]
 
