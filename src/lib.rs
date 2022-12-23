@@ -119,11 +119,11 @@ pub fn main<T: MobAppHelper + 'static>(mut event_loop: EventLoop<Event>, soft_in
         event_loop.run_return(|main_event, tgt, control_flow| {
             control_flow.set_poll();
             warn!(
-            "Got event: {:?} at {} line {}",
-            &main_event,
-            file!(),
-            line!()
-        );
+                "Got event: {:?} at {} line {}",
+                &main_event,
+                file!(),
+                line!()
+            );
             match main_event {
                 NewEvents(e) => match e {
                     StartCause::ResumeTimeReached { .. } => {}
@@ -145,25 +145,36 @@ pub fn main<T: MobAppHelper + 'static>(mut event_loop: EventLoop<Event>, soft_in
                     control_flow.set_poll();
                 }
                 Resumed => {
+                    let mut scale_factor = 1.0;
                     if let Some(primary_mon) = tgt.primary_monitor() {
                         size = primary_mon.size();
-                        window.set_inner_size(size);
+                        scale_factor = primary_mon.scale_factor();
                         warn!(
-                        "Set to new size: {:?} at {} line {}",
-                        &size,
-                        file!(),
-                        line!()
-                    );
+                            "Set to new size: {:?} at {} line {}",
+                            &size,
+                            file!(),
+                            line!()
+                        );
                     } else if let Some(other_mon) = tgt.available_monitors().next() {
                         size = other_mon.size();
-                        window.set_inner_size(size);
+                        scale_factor = other_mon.scale_factor();
                         warn!(
-                        "Set to new size: {:?} at {} line {}",
-                        &size,
-                        file!(),
-                        line!()
-                    );
+                            "Set to new size: {:?} at {} line {}",
+                            &size,
+                            file!(),
+                            line!()
+                        );
                     }
+                    warn!("Recreate platform at {} line {}", file!(), line!());
+                    warn!("Scale factor is {}", scale_factor);
+                    // We use the egui_winit_platform crate as the platform.
+                    platform = Platform::new(PlatformDescriptor {
+                        physical_width: size.width as u32,
+                        physical_height: size.height as u32,
+                        scale_factor: scale_factor,
+                        font_definitions: FontDefinitions::default(),
+                        style: Default::default(),
+                    });
                     control_flow.set_exit();
                 }
                 MainEventsCleared => {}
@@ -173,16 +184,6 @@ pub fn main<T: MobAppHelper + 'static>(mut event_loop: EventLoop<Event>, soft_in
             };
             platform.handle_event(&main_event);
         });
-
-        warn!("Recreate platform at {} line {}", file!(), line!());
-        // We use the egui_winit_platform crate as the platform.
-        platform = Platform::new(PlatformDescriptor {
-            physical_width: size.width as u32,
-            physical_height: size.height as u32,
-            scale_factor: window.scale_factor(),
-            font_definitions: FontDefinitions::default(),
-            style: Default::default(),
-        });
     }
 
     warn!("WGPU new surface at {} line {}", file!(), line!());
@@ -191,7 +192,7 @@ pub fn main<T: MobAppHelper + 'static>(mut event_loop: EventLoop<Event>, soft_in
     warn!("instance request_adapter at {} line {}", file!(), line!());
     // WGPU 0.11+ support force fallback (if HW implementation not supported), set it to true or false (optional).
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
+        power_preference: wgpu::PowerPreference::LowPower,
         compatible_surface: Some(&surface),
         force_fallback_adapter: false,
     }))
@@ -201,7 +202,7 @@ pub fn main<T: MobAppHelper + 'static>(mut event_loop: EventLoop<Event>, soft_in
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             features: wgpu::Features::default(),
-            limits: wgpu::Limits::default(),
+            limits: wgpu::Limits::downlevel_defaults(),
             label: None,
         },
         None,
