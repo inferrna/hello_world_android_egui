@@ -183,7 +183,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             features: wgpu::Features::default(),
-            limits: wgpu::Limits::default(),
+            limits: wgpu::Limits::downlevel_defaults(),
             label: None,
         },
         None,
@@ -326,6 +326,9 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                 winit::event::WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
                 }
+                winit::event::WindowEvent::Focused(focused) => {
+                    in_bad_state |= !focused;
+                },
                 _ => {}
             },
             Resumed => {
