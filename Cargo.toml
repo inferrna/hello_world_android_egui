@@ -9,27 +9,26 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-egui = "0.19.0"
-egui-winit = "0.19.0"
-egui_wgpu_backend = "0.20.0"
+egui = "0.21.0"
+egui-winit = "0.21.1"
+egui_wgpu_backend = "0.22.0"
 epi = "0.17.0"
-egui_winit_platform = {git = "https://github.com/inferrna/egui_winit_platform.git"}
+egui_winit_platform = "0.18.0"
 chrono = "0.4"
-pollster = "0.2"
-#winit = "0.27.1"
-wgpu = "0.14.0"
+pollster = "0.3.0"
+wgpu = "0.15.1"
 tracing-subscriber = "0.3"
-egui_demo_lib = "0.19"
+egui_demo_lib = "0.21.0"
 log = "*"
 
 [target.'cfg(debug_assertions)'.dependencies]
 simple_logger = "*"
-android_logger = "0.11.1"
+android_logger = "0.13.0"
 
-# This dependency will only be included when targeting Android
+# This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
-winit = { git="https://github.com/rust-windowing/winit.git" }
+winit = { version="0.28" }
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
-winit = { git="https://github.com/rust-windowing/winit.git", default-features = false, features = ["android-native-activity"] }
+winit = { version="0.28", default-features = false, features = ["android-native-activity"] }

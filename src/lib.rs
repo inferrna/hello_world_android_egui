@@ -5,7 +5,7 @@ use egui_winit_platform::{Platform, PlatformDescriptor};
 use log::{error, warn};
 use std::iter;
 use std::time::Instant;
-use wgpu::CompositeAlphaMode;
+use wgpu::{CompositeAlphaMode, InstanceDescriptor};
 use winit::event::Event::*;
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
@@ -50,7 +50,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     {
         std::env::set_var("RUST_BACKTRACE", "full");
         android_logger::init_once(
-            android_logger::Config::default().with_min_level(log::Level::Trace),
+            android_logger::Config::default().with_max_level(log::Level::Trace.to_level_filter()),
         );
     }
     let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event()
@@ -77,7 +77,10 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         });
 
     warn!("WGPU new instance at {} line {}", file!(), line!());
-    let mut instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+
+    let instance_descriptor = InstanceDescriptor::default();
+
+    let mut instance = wgpu::Instance::new(instance_descriptor);
 
     let mut size = window.inner_size();
     let outer_size = window.outer_size();
@@ -168,7 +171,14 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     };
 
     warn!("WGPU new surface at {} line {}", file!(), line!());
-    let mut surface = unsafe { instance.create_surface(&window) };
+    let mut surface = unsafe { instance.create_surface(&window).unwrap_or_else(|e| {
+        panic!(
+            "Failed to create surface at {} line {} with error\n{:?}",
+            file!(),
+            line!(),
+            e
+        )
+    }) };
 
     warn!("instance request_adapter at {} line {}", file!(), line!());
     // WGPU 0.11+ support force fallback (if HW implementation not supported), set it to true or false (optional).
@@ -197,7 +207,8 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         )
     });
 
-    let surface_format = surface.get_supported_formats(&adapter)[0];
+    let surface_capabilities = surface.get_capabilities(&adapter);
+    let surface_format = surface_capabilities.formats[0];
     let mut surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: surface_format,
@@ -205,6 +216,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         height: size.height as u32,
         present_mode: wgpu::PresentMode::AutoNoVsync,
         alpha_mode: CompositeAlphaMode::Auto,
+        view_formats: vec![surface_format],
     };
 
     warn!("surface configure at {} line {}", file!(), line!());
@@ -335,7 +347,14 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                 if in_bad_state {
                     //https://github.com/gfx-rs/wgpu/issues/2302
                     warn!("WGPU new surface at {} line {}", file!(), line!());
-                    surface = unsafe { instance.create_surface(&window) };
+                    surface = unsafe { instance.create_surface(&window).unwrap_or_else(|e| {
+                        panic!(
+                            "Failed to create surface at {} line {} with error\n{:?}",
+                            file!(),
+                            line!(),
+                            e
+                        )
+                    }) };
                     warn!("surface configure at {} line {}", file!(), line!());
                     surface.configure(&device, &surface_config);
                     in_bad_state = false;
