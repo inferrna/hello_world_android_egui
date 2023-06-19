@@ -189,11 +189,27 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     }))
     .unwrap_or_else(|| panic!("Failed get adapter at {} line {}", file!(), line!()));
 
+    warn!("Got adapter {:?}", adapter.get_info());
     warn!("adapter request_device at {} line {}", file!(), line!());
+
+    //Make it possible to run on intel HD3000 on Linux.
+    //Might be also helpful for other low-level devices.
+    let mut limits = wgpu::Limits::downlevel_defaults();
+    limits.max_compute_workgroups_per_dimension = 0;
+    limits.max_compute_workgroup_size_x = 0;
+    limits.max_compute_workgroup_size_y = 0;
+    limits.max_compute_workgroup_size_z = 0;
+    limits.max_compute_workgroup_storage_size = 0;
+    limits.max_compute_invocations_per_workgroup = 0;
+    limits.max_storage_buffer_binding_size = 0;
+    limits.max_storage_textures_per_shader_stage = 0;
+    limits.max_storage_buffers_per_shader_stage = 0;
+    limits.max_dynamic_storage_buffers_per_pipeline_layout = 0;
+    
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             features: wgpu::Features::default(),
-            limits: wgpu::Limits::downlevel_defaults(),
+            limits: limits,
             label: None,
         },
         None,
