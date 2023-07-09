@@ -11,4 +11,5 @@
 
 ## To build
 `ANDROID_HOME=your_sdk_home NDK_HOME=your_ndk_home cargo apk build`
+
 Where *your_sdk_home* must contain `build-tools` directory and *your_ndk_home* must contain `ndk-*` binaries: `ndk-build` and other.
