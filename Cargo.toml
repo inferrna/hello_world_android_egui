@@ -5,30 +5,53 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+#[target.'cfg(not(target_os = "android"))'.lib]
+#crate-type = ["lib"]
+#[target.'cfg(target_os = "android")'.lib]
+
 [lib]
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-egui = "0.22.0"
-egui-winit = "0.22.0"
-egui_wgpu_backend = "0.24.0"
-epi = "0.17.0"
-egui_winit_platform = "0.19.0"
+egui = "0.25"
+egui-winit = "0.25"
+egui_wgpu_backend = { path = "../egui_wgpu_backend" }
+epi = "0.17"
 chrono = "0.4"
-pollster = "0.3.0"
-wgpu = "0.16.1"
+pollster = "0.3"
+wgpu = { version = "0.19", default-features = false }
 tracing-subscriber = "0.3"
-egui_demo_lib = "0.22.0"
+egui_demo_lib = "0.25"
 log = "*"
 
 [target.'cfg(debug_assertions)'.dependencies]
 simple_logger = "*"
-android_logger = "0.13.0"
+android_logger = "0.13"
 
 # This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
-winit = { version="0.28" }
+winit = { version= "0.29", features = ["wayland", "x11"] }
+egui_winit_platform = { path = "../egui_winit_platform", features = ["linux_desktop"] }
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
-winit = { version="0.28", default-features = false, features = ["android-native-activity"] }
+winit = { version= "0.29", default-features = false, features = ["android-native-activity"] }
+egui_winit_platform = { path = "../egui_winit_platform", features = ["android-native-activity"] }
+
+[package.metadata.android]
+package = "org.egui.helloworld"
+build_targets = [ "aarch64-linux-android" ] #"mipsel-unknown-none" "armv7-linux-androideabi", "aarch64-linux-android",
+
+[package.metadata.android.sdk]
+min_sdk_version = 31
+target_sdk_version = 32
+
+[package.metadata.android.application]
+extract_native_libs = true
+
+[package.metadata.android.application.activity]
+config_changes = "orientation"
+
+[package.metadata.android.signing.release]
+path = "/home/inferno/.android/debug.keystore"
+keystore_password = "android"
