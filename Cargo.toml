@@ -32,3 +32,19 @@ winit = { version="0.28" }
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
 winit = { version="0.28", default-features = false, features = ["android-native-activity"] }
+
+[package.metadata.android]
+package = "old.egui.helloworld"
+apk_name = "old_helloworld"
+build_targets = [ "aarch64-linux-android" ]
+
+[package.metadata.android.sdk]
+min_sdk_version = 31
+target_sdk_version = 32
+
+[package.metadata.android.application]
+extract_native_libs = true
+label = "old_helloworld"
+
+[package.metadata.android.application.activity]
+config_changes = "orientation"
