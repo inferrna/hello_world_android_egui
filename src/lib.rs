@@ -252,7 +252,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::AutoNoVsync,
-        desired_maximum_frame_latency: 2,
+        desired_maximum_frame_latency: 6,
         alpha_mode: CompositeAlphaMode::Auto,
         view_formats: vec![surface_format],
     };
@@ -277,8 +277,9 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     platform.context().set_request_repaint_callback(move |_| clbk_window.request_redraw());
 
     warn!("Enter the loop");
-    event_loop.run(move |event, window_target| {
+    event_loop.run_on_demand(move |event, window_target| {
         // Pass the winit events to the platform integration.
+        window_target.set_control_flow(ControlFlow::Poll);
         warn!("Got event: {:?} at {} line {}", &event, file!(), line!());
         match &event {
             UserEvent(Event::RequestRedraw) => {
@@ -425,7 +426,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             NewEvents(e) => {
                 match e {
                     StartCause::ResumeTimeReached { .. } => {}
-                    StartCause::WaitCancelled { .. } => {}
+                    StartCause::WaitCancelled { .. } => {window_target.set_control_flow(ControlFlow::Poll)}
                     StartCause::Poll => {
                         window_target.set_control_flow(ControlFlow::Poll);
                     }
@@ -435,7 +436,9 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                 }
             }
             DeviceEvent { .. } => {}
-            AboutToWait => {}//window_target.set_control_flow(ControlFlow::Wait),
+            AboutToWait => {
+                window_target.set_control_flow(ControlFlow::Wait);
+            }
             LoopExiting => {}
             MemoryWarning => {}
         }
