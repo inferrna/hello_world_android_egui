@@ -3,19 +3,13 @@ name = "hello_world_android_egui"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-#[target.'cfg(not(target_os = "android"))'.lib]
-#crate-type = ["lib"]
-#[target.'cfg(target_os = "android")'.lib]
-
 [lib]
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
 egui = "0.25"
 egui-winit = "0.25"
-egui_wgpu_backend = { path = "../egui_wgpu_backend" }
+egui_wgpu_backend = { git = "https://github.com/inferrna/egui_wgpu_backend", branch="wgpu0.19_egui0.25" }
 epi = "0.17"
 chrono = "0.4"
 pollster = "0.3"
@@ -31,19 +25,21 @@ android_logger = "0.13"
 # This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
 winit = { version= "0.29", features = ["wayland", "x11"] }
-egui_winit_platform = { path = "../egui_winit_platform", features = ["linux_desktop"] }
+egui_winit_platform = { git = "https://github.com/inferrna/egui_winit_platform", branch="winit0.29_egui0.25", features = ["linux_desktop"] }
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
 winit = { version= "0.29", features = ["android-native-activity"] } #default-features = false,
-egui_winit_platform = { path = "../egui_winit_platform", features = ["android-native-activity"] }
+egui_winit_platform = { git = "https://github.com/inferrna/egui_winit_platform", branch="winit0.29_egui0.25", features = ["android-native-activity"] }
 
 [package.metadata.android]
 package = "org.egui.helloworld"
-build_targets = [ "aarch64-linux-android" ] #"mipsel-unknown-none" "armv7-linux-androideabi", "aarch64-linux-android",
+#build_targets = [ "aarch64-linux-android" ]
+build_targets = [ "armv7-linux-androideabi" ]
+large_heap = true
 
 [package.metadata.android.sdk]
-min_sdk_version = 31
+min_sdk_version = 20
 target_sdk_version = 32
 
 [package.metadata.android.application]
@@ -52,6 +48,7 @@ extract_native_libs = true
 [package.metadata.android.application.activity]
 config_changes = "orientation"
 
+# Change to your location
 [package.metadata.android.signing.release]
 path = "/home/inferno/.android/debug.keystore"
 keystore_password = "android"
