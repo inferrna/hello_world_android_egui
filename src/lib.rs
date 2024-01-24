@@ -7,7 +7,7 @@ use std::iter;
 use std::process::exit;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use wgpu::{Backends, CompositeAlphaMode, InstanceDescriptor};
+use wgpu::{Backends, CompositeAlphaMode, InstanceDescriptor, InstanceFlags, TextureFormat};
 use winit::event::Event::*;
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
@@ -84,15 +84,16 @@ pub fn main(mut event_loop: EventLoop<Event>) {
 
     warn!("WGPU new instance at {} line {}", file!(), line!());
 
-    let instance_descriptor = InstanceDescriptor{backends: Backends::VULKAN, ..Default::default()};
+    let instance_descriptor = InstanceDescriptor {
+        backends: Backends::GL,
+        flags: InstanceFlags::from_build_config(), //May broke app if flags are unsupported by device. Then use empty()
+        ..Default::default()
+    };
 
     let mut instance = wgpu::Instance::new(instance_descriptor);
 
     let mut size = window.inner_size();
     let outer_size = window.outer_size();
-
-    warn!("outer_size = {:?}", outer_size);
-    warn!("size = {:?}", size);
 
     warn!("Create platform at {} line {}", file!(), line!());
     // We use the egui_winit_platform crate as the platform.
@@ -174,9 +175,6 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             platform.handle_event(&main_event);
         }).unwrap();
 
-        //RustStdoutStderr:     `Surface` width and height must be within the maximum supported texture size. Requested was (1080, 2340), maximum extent is 2048.
-        //size = PhysicalSize::new(size.width, size.height.min(2048));
-
         warn!("Recreate platform at {} line {}", file!(), line!());
         // We use the egui_winit_platform crate as the platform.
         Platform::new(PlatformDescriptor {
@@ -190,14 +188,14 @@ pub fn main(mut event_loop: EventLoop<Event>) {
 
 
     warn!("WGPU new surface at {} line {}", file!(), line!());
-    let mut surface = unsafe { instance.create_surface(window.clone()).unwrap_or_else(|e| {
+    let mut surface = instance.create_surface(window.clone()).unwrap_or_else(|e| {
         panic!(
             "Failed to create surface at {} line {} with error\n{:?}",
             file!(),
             line!(),
             e
         )
-    }) };
+    });
 
     warn!("instance request_adapter at {} line {}", file!(), line!());
     // WGPU 0.11+ support force fallback (if HW implementation not supported), set it to true or false (optional).
@@ -209,13 +207,23 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     .unwrap_or_else(|| panic!("Failed get adapter at {} line {}", file!(), line!()));
 
     warn!("Got adapter {:?}", adapter.get_info());
-    warn!("adapter request_device at {} line {}", file!(), line!());
+
+    #[cfg(debug_assertions)] {
+        let max_sz = size.width.max(size.height);
+        let log2 = max_sz.ilog2();
+        let tex_sz = if 2_u32.pow(log2) >= max_sz {
+            max_sz
+        } else {
+            2_u32.pow(log2 + 1)
+        };
+        info!("max_sz = {max_sz}, tex_sz = {tex_sz}, log2 = {log2}");
+    }
 
     //Make it possible to run on intel HD3000 on Linux.
     //Might be also helpful for other low-level devices.
     let mut limits = wgpu::Limits::downlevel_defaults();
-    limits.max_texture_dimension_2d = 4096;
-    limits.max_texture_dimension_1d = 8192;
+    limits.max_texture_dimension_2d = 4096; //Too low at downlevel_defaults. Should be >= max screen dimension
+    limits.max_texture_dimension_1d = 4096;
     limits.max_compute_workgroups_per_dimension = 0;
     limits.max_compute_workgroup_size_x = 0;
     limits.max_compute_workgroup_size_y = 0;
@@ -226,12 +234,13 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     limits.max_storage_textures_per_shader_stage = 0;
     limits.max_storage_buffers_per_shader_stage = 0;
     limits.max_dynamic_storage_buffers_per_pipeline_layout = 0;
-    
+
+    warn!("adapter request_device at {} line {}", file!(), line!());
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::default(),
+            required_features: wgpu::Features::empty(),
             required_limits: limits,
-            label: None,
+            label: Some("WGPU_DEV_DBG"),
         },
         None,
     ))
@@ -245,14 +254,19 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     });
 
     let surface_capabilities = surface.get_capabilities(&adapter);
-    let surface_format = surface_capabilities.formats[0];
+
+    let surface_format = *surface_capabilities
+        .formats
+        .iter()
+        .find(|f| [TextureFormat::Bgra8Unorm, TextureFormat::Bgra8UnormSrgb].contains(f))
+        .unwrap_or(&surface_capabilities.formats[0]);
     let mut surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: surface_format,
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::AutoNoVsync,
-        desired_maximum_frame_latency: 6,
+        desired_maximum_frame_latency: 2,
         alpha_mode: CompositeAlphaMode::Auto,
         view_formats: vec![surface_format],
     };
@@ -263,10 +277,11 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     warn!("RenderPass new at {} line {}", file!(), line!());
     // We use the egui_wgpu_backend crate as the render backend.
     let mut egui_rpass = RenderPass::new(&device, surface_format, 1);
-    warn!("DemoWindows default at {} line {}", file!(), line!());
 
+    warn!("DemoWindows default at {} line {}", file!(), line!());
     // Display the demo application that ships with egui.
     let mut demo_app = egui_demo_lib::DemoWindows::default();
+
     let start_time = Instant::now();
     let mut in_bad_state = false;
 
@@ -352,7 +367,6 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                         .create_view(&wgpu::TextureViewDescriptor::default());
 
                     info!("Begin new frame");
-                    dbg!(loop_window.scale_factor());
                     // Begin to draw the UI frame.
                     platform.begin_frame();
 
@@ -400,8 +414,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                         .remove_textures(tdelta)
                         .expect("remove texture failed");
 
-                    //loop_window.request_redraw();
-                    platform.context().request_repaint_after(Duration::from_millis(30));
+                    platform.context().request_repaint_after(Duration::from_millis(33));
                 }
             },
             Resumed => {
@@ -426,19 +439,15 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             NewEvents(e) => {
                 match e {
                     StartCause::ResumeTimeReached { .. } => {}
-                    StartCause::WaitCancelled { .. } => {window_target.set_control_flow(ControlFlow::Poll)}
-                    StartCause::Poll => {
-                        window_target.set_control_flow(ControlFlow::Poll);
-                    }
+                    StartCause::WaitCancelled { .. } => {}
+                    StartCause::Poll => {}
                     StartCause::Init => {
                         loop_window.request_redraw();
                     }
                 }
             }
             DeviceEvent { .. } => {}
-            AboutToWait => {
-                window_target.set_control_flow(ControlFlow::Wait);
-            }
+            AboutToWait => {}
             LoopExiting => {}
             MemoryWarning => {}
         }
