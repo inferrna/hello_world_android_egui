@@ -20,7 +20,7 @@ log = "*"
 
 [target.'cfg(debug_assertions)'.dependencies]
 simple_logger = "*"
-android_logger = "0.13"
+android_logger = "0.14.1"
 
 # This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -34,8 +34,8 @@ egui_winit_platform = { version = "0.22.0", features = ["default_fonts"] }
 
 [package.metadata.android]
 package = "org.egui.helloworld"
-#build_targets = [ "aarch64-linux-android" ]
-build_targets = [ "armv7-linux-androideabi" ]
+build_targets = [ "aarch64-linux-android" ]
+#build_targets = [ "armv7-linux-androideabi" ]
 large_heap = true
 
 [package.metadata.android.sdk]
