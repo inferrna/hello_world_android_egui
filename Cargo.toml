@@ -7,15 +7,15 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-egui = "0.25"
-egui-winit = "0.25"
-egui_wgpu_backend = { git = "https://github.com/inferrna/egui_wgpu_backend", branch="wgpu0.19_egui0.25" }
+egui = "0.27"
+egui-winit = "0.27"
+egui_wgpu_backend = "0.29.0"
 epi = "0.17"
 chrono = "0.4"
 pollster = "0.3"
-wgpu = { version = "0.19", default-features = false }
+wgpu = { version = "0.20", default-features = false }
 tracing-subscriber = "0.3"
-egui_demo_lib = "0.25"
+egui_demo_lib = "0.27"
 log = "*"
 
 [target.'cfg(debug_assertions)'.dependencies]
@@ -25,12 +25,12 @@ android_logger = "0.13"
 # This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
 winit = { version= "0.29", features = ["wayland", "x11"] }
-egui_winit_platform = { git = "https://github.com/inferrna/egui_winit_platform", branch="winit0.29_egui0.25", features = ["linux_desktop"] }
+egui_winit_platform = { version = "0.22.0", features = ["clipboard"] }
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
 winit = { version= "0.29", features = ["android-native-activity"] } #default-features = false,
-egui_winit_platform = { git = "https://github.com/inferrna/egui_winit_platform", branch="winit0.29_egui0.25", features = ["android-native-activity"] }
+egui_winit_platform = { version = "0.22.0", features = ["default_fonts"] }
 
 [package.metadata.android]
 package = "org.egui.helloworld"

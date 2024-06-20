@@ -1,12 +1,11 @@
-use ::egui::FontDefinitions;
 use chrono::Timelike;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
-use egui_winit_platform::{Platform, PlatformDescriptor};
 use log::{error, info, warn};
 use std::iter;
 use std::process::exit;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use egui_winit_platform::{Platform, PlatformDescriptor};
 use wgpu::{Backends, CompositeAlphaMode, InstanceDescriptor, InstanceFlags, TextureFormat};
 use winit::event::Event::*;
 use winit::event_loop::ControlFlow;
@@ -85,7 +84,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     warn!("WGPU new instance at {} line {}", file!(), line!());
 
     let instance_descriptor = InstanceDescriptor {
-        backends: Backends::GL,
+        backends: Backends::PRIMARY,
         flags: InstanceFlags::from_build_config(), //May broke app if flags are unsupported by device. Then use empty()
         ..Default::default()
     };
@@ -101,8 +100,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         physical_width: size.width,
         physical_height: size.height,
         scale_factor: window.scale_factor(),
-        font_definitions: FontDefinitions::default(),
-        style: Default::default(),
+        ..Default::default()
     });
 
     #[cfg(target_os = "android")]
@@ -181,8 +179,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             physical_width: size.width,
             physical_height: size.height,
             scale_factor: window.scale_factor(),
-            font_definitions: FontDefinitions::default(),
-            style: Default::default(),
+            ..Default::default()
         })
     };
 
@@ -221,7 +218,9 @@ pub fn main(mut event_loop: EventLoop<Event>) {
 
     //Make it possible to run on intel HD3000 on Linux.
     //Might be also helpful for other low-level devices.
+
     let mut limits = wgpu::Limits::downlevel_defaults();
+        
     limits.max_texture_dimension_2d = 4096; //Too low at downlevel_defaults. Should be >= max screen dimension
     limits.max_texture_dimension_1d = 4096;
     limits.max_compute_workgroups_per_dimension = 0;
@@ -238,7 +237,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     warn!("adapter request_device at {} line {}", file!(), line!());
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::empty(),
+            required_features: wgpu::Features::default(),
             required_limits: limits,
             label: Some("WGPU_DEV_DBG"),
         },
@@ -260,6 +259,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
         .iter()
         .find(|f| [TextureFormat::Bgra8Unorm, TextureFormat::Bgra8UnormSrgb].contains(f))
         .unwrap_or(&surface_capabilities.formats[0]);
+
     let mut surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: surface_format,
