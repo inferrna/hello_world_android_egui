@@ -14,9 +14,13 @@ epi = "0.17"
 chrono = "0.4"
 pollster = "0.3"
 wgpu = { version = "0.20", default-features = false }
-tracing-subscriber = "0.3"
+#tracing-subscriber = { version = "0.3", default-features = false, features = ["alloc"] }
 egui_demo_lib = "0.27"
 log = "*"
+
+[dependencies.android-activity]
+version = "0.6.0"
+features = ["native-activity"]
 
 [target.'cfg(debug_assertions)'.dependencies]
 simple_logger = "*"
@@ -24,19 +28,19 @@ android_logger = "0.14.1"
 
 # This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
-winit = { version= "0.29", features = ["wayland", "x11"] }
-egui_winit_platform = { version = "0.22.0", features = ["clipboard"] }
+winit = { version= "0.30", features = ["wayland", "x11"] }
+egui_winit_platform = "0.22.0"
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
-winit = { version= "0.29", features = ["android-native-activity"] } #default-features = false,
-egui_winit_platform = { version = "0.22.0", features = ["default_fonts"] }
+winit = { version= "0.30", features = ["android-native-activity"] } #default-features = false,
+egui_winit_platform = "0.22.0"
 
 [package.metadata.android]
 package = "org.egui.helloworld"
 build_targets = [ "aarch64-linux-android" ]
 #build_targets = [ "armv7-linux-androideabi" ]
-large_heap = true
+#large_heap = true
 
 [package.metadata.android.sdk]
 min_sdk_version = 20
@@ -52,3 +56,6 @@ config_changes = "orientation"
 [package.metadata.android.signing.release]
 path = "/home/inferno/.android/debug.keystore"
 keystore_password = "android"
+
+[profile.release]
+debug = true

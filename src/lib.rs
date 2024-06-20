@@ -18,6 +18,8 @@ use winit::{
 };
 use winit::dpi::PhysicalSize;
 use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
+use winit::window;
+use winit::window::{Window, WindowAttributes};
 
 /// A custom event type for the winit app.
 #[derive(Debug, Clone, Copy)]
@@ -49,6 +51,7 @@ impl epi::backend::RepaintSignal for ExampleRepaintSignal {
 #[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    warn!("android_logger init {} line {}", file!(), line!());
     #[cfg(debug_assertions)]
     {
         std::env::set_var("RUST_BACKTRACE", "full");
@@ -56,36 +59,48 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
             android_logger::Config::default().with_max_level(log::Level::Trace.to_level_filter()),
         );
     }
-    let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event()
+    warn!("Winit create event loop {} line {}", file!(), line!());
+    let event_loop = EventLoop::with_user_event()
         .with_android_app(app)
         .build()
         .unwrap();
     main(event_loop);
 }
+
+struct WindowState(WindowAttributes);
+
 pub fn main(mut event_loop: EventLoop<Event>) {
     //'Cannot get the native window, it's null and will always be null before Event::Resumed and after Event::Suspended. Make sure you only call this function between those events.', ..../winit-c2fdb27092aba5a7/418cc44/src/platform_impl/android/mod.rs:1028:13
     warn!("Winit build window at {} line {}", file!(), line!());
-    let window = winit::window::WindowBuilder::new()
+    let window_attributes = Window::default_attributes()
         .with_decorations(!cfg!(android)) /* !cfg!(android) */
         .with_resizable(!cfg!(android))
         .with_transparent(false)
-        .with_title("egui-wgpu_winit example")
-        .build(&event_loop)
-        .unwrap_or_else(|e| {
-            panic!(
-                "Failed to init window at {} line {} with error\n{:?}",
-                file!(),
-                line!(),
-                e
-            )
-        });
+        .with_title("egui-wgpu_winit example");
+
+    #[cfg(any(x11_platform, wayland_platform))]
+    if let Some(token) = event_loop.read_token_from_env() {
+        startup_notify::reset_activation_token_env();
+        info!("Using token {:?} to activate a window", token);
+        window_attributes = window_attributes.with_activation_token(token);
+    }
+
+    let window = event_loop.create_window(window_attributes).unwrap_or_else(|e| {
+        panic!(
+            "Failed to init window at {} line {} with error\n{:?}",
+            file!(),
+            line!(),
+            e
+        )
+    });;
+
     let window = Arc::new(window);
 
     warn!("WGPU new instance at {} line {}", file!(), line!());
 
     let instance_descriptor = InstanceDescriptor {
         backends: Backends::PRIMARY,
-        flags: InstanceFlags::from_build_config(), //May broke app if flags are unsupported by device. Then use empty()
+        flags: InstanceFlags::empty(), //May broke app if flags are unsupported by device. Then use empty()
         ..Default::default()
     };
 
@@ -220,7 +235,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     //Might be also helpful for other low-level devices.
 
     let mut limits = wgpu::Limits::downlevel_defaults();
-        
+
     limits.max_texture_dimension_2d = 4096; //Too low at downlevel_defaults. Should be >= max screen dimension
     limits.max_texture_dimension_1d = 4096;
     limits.max_compute_workgroups_per_dimension = 0;
@@ -237,7 +252,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
     warn!("adapter request_device at {} line {}", file!(), line!());
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::default(),
+            required_features: wgpu::Features::empty(),
             required_limits: limits,
             label: Some("WGPU_DEV_DBG"),
         },
@@ -331,9 +346,6 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                 WindowEvent::CursorLeft { .. } => {}
                 WindowEvent::MouseWheel { .. } => {}
                 WindowEvent::MouseInput { .. } => {},
-                WindowEvent::TouchpadMagnify { .. } => {}
-                WindowEvent::SmartMagnify { .. } => {}
-                WindowEvent::TouchpadRotate { .. } => {}
                 WindowEvent::TouchpadPressure { .. } => {}
                 WindowEvent::AxisMotion { .. } => {}
                 WindowEvent::Touch(_) => {}
@@ -416,6 +428,10 @@ pub fn main(mut event_loop: EventLoop<Event>) {
 
                     platform.context().request_repaint_after(Duration::from_millis(33));
                 }
+                WindowEvent::PinchGesture { .. } => {}
+                WindowEvent::PanGesture { .. } => {}
+                WindowEvent::DoubleTapGesture { .. } => {}
+                WindowEvent::RotationGesture { .. } => {}
             },
             Resumed => {
                 if in_bad_state {
