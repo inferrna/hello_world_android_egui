@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use wgpu::{Backends, CompositeAlphaMode, InstanceDescriptor, InstanceFlags, TextureFormat};
 use winit::event::Event::*;
-use winit::event_loop::ControlFlow;
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::event_loop::EventLoop;
 use winit::event::{StartCause, WindowEvent};
 
@@ -56,7 +56,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
             android_logger::Config::default().with_max_level(log::Level::Trace.to_level_filter()),
         );
     }
-    let event_loop = winit::event_loop::EventLoopBuilder::<Event>::with_user_event()
+    let event_loop = winit::event_loop::EventLoop::with_user_event()
         .with_android_app(app)
         .build()
         .unwrap();
@@ -65,12 +65,12 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
 pub fn main(mut event_loop: EventLoop<Event>) {
     //'Cannot get the native window, it's null and will always be null before Event::Resumed and after Event::Suspended. Make sure you only call this function between those events.', ..../winit-c2fdb27092aba5a7/418cc44/src/platform_impl/android/mod.rs:1028:13
     warn!("Winit build window at {} line {}", file!(), line!());
-    let window = winit::window::WindowBuilder::new()
-        .with_decorations(!cfg!(android)) /* !cfg!(android) */
-        .with_resizable(!cfg!(android))
+    let window_attributes = winit::window::WindowAttributes::default()
+        .with_decorations(!cfg!(target_os = "android")) /* !cfg!(android) */
+        .with_resizable(!cfg!(target_os = "android"))
         .with_transparent(false)
-        .with_title("egui-wgpu_winit example")
-        .build(&event_loop)
+        .with_title("egui-wgpu_winit example");
+    let window = event_loop.create_window(window_attributes)
         .unwrap_or_else(|e| {
             panic!(
                 "Failed to init window at {} line {} with error\n{:?}",
@@ -135,6 +135,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                         );
                         tgt.exit();
                     }
+                    platform.handle_event(&event);
                 }
                 DeviceEvent { .. } => {}
                 UserEvent(_) => {}
@@ -170,7 +171,6 @@ pub fn main(mut event_loop: EventLoop<Event>) {
                 }
                 _ => {}
             };
-            platform.handle_event(&main_event);
         }).unwrap();
 
         warn!("Recreate platform at {} line {}", file!(), line!());
@@ -240,6 +240,7 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             required_features: wgpu::Features::default(),
             required_limits: limits,
             label: Some("WGPU_DEV_DBG"),
+            memory_hints: Default::default(),
         },
         None,
     ))
@@ -300,122 +301,126 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             UserEvent(Event::RequestRedraw) => {
                 loop_window.request_redraw();
             }
-            winit::event::Event::WindowEvent { event, .. } => match event {
-                winit::event::WindowEvent::Resized(size) => {
-                    // Resize with 0 width and height is used by winit to signal a minimize event on Windows.
-                    // See: https://github.com/rust-windowing/winit/issues/208
-                    // This solves an issue where the app would panic when minimizing on Windows.
-                    if size.width > 0 && size.height > 0 {
-                        surface_config.width = size.width;
-                        surface_config.height = size.height;
-                        surface.configure(&device, &surface_config);
+            winit::event::Event::WindowEvent { event, .. } => {
+                match event {
+                    winit::event::WindowEvent::Resized(size) => {
+                        // Resize with 0 width and height is used by winit to signal a minimize event on Windows.
+                        // See: https://github.com/rust-windowing/winit/issues/208
+                        // This solves an issue where the app would panic when minimizing on Windows.
+                        if size.width > 0 && size.height > 0 {
+                            surface_config.width = size.width;
+                            surface_config.height = size.height;
+                            surface.configure(&device, &surface_config);
+                        }
                     }
+                    winit::event::WindowEvent::CloseRequested => {
+                        exit(0);
+                    }
+                    winit::event::WindowEvent::Focused(focused) => {
+                        in_bad_state |= !focused;
+                    }
+                    WindowEvent::ActivationTokenDone { .. } => {}
+                    WindowEvent::Moved(_) => {}
+                    WindowEvent::Destroyed => {}
+                    WindowEvent::DroppedFile(_) => {}
+                    WindowEvent::HoveredFile(_) => {}
+                    WindowEvent::HoveredFileCancelled => {}
+                    WindowEvent::KeyboardInput { .. } => {}
+                    WindowEvent::ModifiersChanged(_) => {}
+                    WindowEvent::Ime(_) => {}
+                    WindowEvent::CursorMoved { .. } => {}
+                    WindowEvent::CursorEntered { .. } => {}
+                    WindowEvent::CursorLeft { .. } => {}
+                    WindowEvent::MouseWheel { .. } => {}
+                    WindowEvent::MouseInput { .. } => {}
+                    WindowEvent::TouchpadPressure { .. } => {}
+                    WindowEvent::AxisMotion { .. } => {}
+                    WindowEvent::Touch(_) => {}
+                    WindowEvent::ScaleFactorChanged { .. } => {}
+                    WindowEvent::ThemeChanged(_) => {}
+                    WindowEvent::Occluded(_) => {}
+                    WindowEvent::RedrawRequested => {
+                        let output_frame = match surface.get_current_texture() {
+                            Ok(frame) => frame,
+                            Err(wgpu::SurfaceError::Outdated) => {
+                                // This error occurs when the app is minimized on Windows.
+                                // Silently return here to prevent spamming the console with:
+                                error!("The underlying surface has changed, and therefore the swap chain must be updated");
+                                in_bad_state = true;
+                                return;
+                            }
+                            Err(wgpu::SurfaceError::Lost) => {
+                                // This error occurs when the app is minimized on Windows.
+                                // Silently return here to prevent spamming the console with:
+                                error!("LOST surface, drop frame. Originally: \"The swap chain has been lost and needs to be recreated\"");
+                                in_bad_state = true;
+                                return;
+                            }
+                            Err(e) => {
+                                error!("Dropped frame with error: {}", e);
+                                return;
+                            }
+                        };
+                        let output_view = output_frame
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+
+                        info!("Begin new frame");
+                        // Begin to draw the UI frame.
+                        platform.begin_frame();
+
+                        // Draw the demo application.
+                        demo_app.ui(&platform.context());
+                        info!("End new frame");
+                        // End the UI frame. We could now handle the output and draw the UI with the backend.
+                        let full_output = platform.end_frame(Some(&loop_window));
+
+                        platform.update_time(start_time.elapsed().as_secs_f64());
+
+                        let paint_jobs = platform.context().tessellate(full_output.shapes, loop_window.scale_factor() as f32);
+
+                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("encoder"),
+                        });
+
+                        // Upload all resources for the GPU.
+                        let screen_descriptor = ScreenDescriptor {
+                            physical_width: surface_config.width,
+                            physical_height: surface_config.height,
+                            scale_factor: loop_window.scale_factor() as f32,
+                        };
+                        let tdelta = full_output.textures_delta;
+                        egui_rpass
+                            .add_textures(&device, &queue, &tdelta)
+                            .expect("add texture failed");
+                        egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
+                        // Record all render passes.
+                        egui_rpass
+                            .execute(
+                                &mut encoder,
+                                &output_view,
+                                &paint_jobs,
+                                &screen_descriptor,
+                                Some(wgpu::Color::BLACK),
+                            )
+                            .unwrap_or_else(|e| panic!("Failed to render pass at {} line {} with error\n{:?}", file!(), line!(), e));
+                        // Submit the commands.
+                        queue.submit(iter::once(encoder.finish()));
+
+                        // Redraw egui
+                        output_frame.present();
+                        egui_rpass
+                            .remove_textures(tdelta)
+                            .expect("remove texture failed");
+
+                        platform.context().request_repaint_after(Duration::from_millis(33));
+                    }
+                    WindowEvent::PinchGesture { .. } => {}
+                    WindowEvent::PanGesture { .. } => {}
+                    WindowEvent::DoubleTapGesture { .. } => {}
+                    WindowEvent::RotationGesture { .. } => {}
                 }
-                winit::event::WindowEvent::CloseRequested => {
-                    exit(0);
-                }
-                winit::event::WindowEvent::Focused(focused) => {
-                    in_bad_state |= !focused;
-                },
-                WindowEvent::ActivationTokenDone { .. } => {}
-                WindowEvent::Moved(_) => {}
-                WindowEvent::Destroyed => {}
-                WindowEvent::DroppedFile(_) => {}
-                WindowEvent::HoveredFile(_) => {}
-                WindowEvent::HoveredFileCancelled => {}
-                WindowEvent::KeyboardInput { .. } => {}
-                WindowEvent::ModifiersChanged(_) => {}
-                WindowEvent::Ime(_) => {}
-                WindowEvent::CursorMoved { .. } => {}
-                WindowEvent::CursorEntered { .. } => {}
-                WindowEvent::CursorLeft { .. } => {}
-                WindowEvent::MouseWheel { .. } => {}
-                WindowEvent::MouseInput { .. } => {},
-                WindowEvent::TouchpadMagnify { .. } => {}
-                WindowEvent::SmartMagnify { .. } => {}
-                WindowEvent::TouchpadRotate { .. } => {}
-                WindowEvent::TouchpadPressure { .. } => {}
-                WindowEvent::AxisMotion { .. } => {}
-                WindowEvent::Touch(_) => {}
-                WindowEvent::ScaleFactorChanged { .. } => {}
-                WindowEvent::ThemeChanged(_) => {}
-                WindowEvent::Occluded(_) => {}
-                WindowEvent::RedrawRequested => {
-                    let output_frame = match surface.get_current_texture() {
-                        Ok(frame) => frame,
-                        Err(wgpu::SurfaceError::Outdated) => {
-                            // This error occurs when the app is minimized on Windows.
-                            // Silently return here to prevent spamming the console with:
-                            error!("The underlying surface has changed, and therefore the swap chain must be updated");
-                            in_bad_state = true;
-                            return;
-                        }
-                        Err(wgpu::SurfaceError::Lost) => {
-                            // This error occurs when the app is minimized on Windows.
-                            // Silently return here to prevent spamming the console with:
-                            error!("LOST surface, drop frame. Originally: \"The swap chain has been lost and needs to be recreated\"");
-                            in_bad_state = true;
-                            return;
-                        }
-                        Err(e) => {
-                            error!("Dropped frame with error: {}", e);
-                            return;
-                        }
-                    };
-                    let output_view = output_frame
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default());
-
-                    info!("Begin new frame");
-                    // Begin to draw the UI frame.
-                    platform.begin_frame();
-
-                    // Draw the demo application.
-                    demo_app.ui(&platform.context());
-                    info!("End new frame");
-                    // End the UI frame. We could now handle the output and draw the UI with the backend.
-                    let full_output = platform.end_frame(Some(&loop_window));
-
-                    platform.update_time(start_time.elapsed().as_secs_f64());
-
-                    let paint_jobs = platform.context().tessellate(full_output.shapes, loop_window.scale_factor() as f32);
-
-                    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("encoder"),
-                    });
-
-                    // Upload all resources for the GPU.
-                    let screen_descriptor = ScreenDescriptor {
-                        physical_width: surface_config.width,
-                        physical_height: surface_config.height,
-                        scale_factor: loop_window.scale_factor() as f32
-                    };
-                    let tdelta: egui::TexturesDelta = full_output.textures_delta;
-                    egui_rpass
-                        .add_textures(&device, &queue, &tdelta)
-                        .expect("add texture failed");
-                    egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
-                    // Record all render passes.
-                    egui_rpass
-                        .execute(
-                            &mut encoder,
-                            &output_view,
-                            &paint_jobs,
-                            &screen_descriptor,
-                            Some(wgpu::Color::BLACK),
-                        )
-                        .unwrap_or_else(|e| panic!("Failed to render pass at {} line {} with error\n{:?}", file!(), line!(), e));
-                    // Submit the commands.
-                    queue.submit(iter::once(encoder.finish()));
-
-                    // Redraw egui
-                    output_frame.present();
-                    egui_rpass
-                        .remove_textures(tdelta)
-                        .expect("remove texture failed");
-
-                    platform.context().request_repaint_after(Duration::from_millis(33));
-                }
+                platform.handle_event(&event);
             },
             Resumed => {
                 if in_bad_state {
@@ -451,7 +456,6 @@ pub fn main(mut event_loop: EventLoop<Event>) {
             LoopExiting => {}
             MemoryWarning => {}
         }
-        platform.handle_event(&event);
     }).unwrap();
 }
 
