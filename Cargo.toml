@@ -7,15 +7,15 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-egui = { git = "https://github.com/emilk/egui/" }
-egui-winit =  { git = "https://github.com/emilk/egui/" }
+egui = { git = "https://github.com/emilk/egui/", rev = "dae1979dd334ace310b6e3ef02e98281ed7dfb8e" }
+egui-winit =  { git = "https://github.com/emilk/egui/", rev = "dae1979dd334ace310b6e3ef02e98281ed7dfb8e" }
+egui_demo_lib = "0.28.1"
 egui_wgpu_backend = "0.30"
 epi = "0.17"
 chrono = "0.4"
 pollster = "0.3"
 wgpu = { version = "22", default-features = false }
 tracing-subscriber = "0.3"
-egui_demo_lib = "0.28.1"
 log = "*"
 
 [target.'cfg(debug_assertions)'.dependencies]
