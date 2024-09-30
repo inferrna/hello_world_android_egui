@@ -7,9 +7,9 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-egui = { git = "https://github.com/emilk/egui/", rev = "dae1979dd334ace310b6e3ef02e98281ed7dfb8e" }
-egui-winit =  { git = "https://github.com/emilk/egui/", rev = "dae1979dd334ace310b6e3ef02e98281ed7dfb8e" }
-egui_demo_lib = "0.28.1"
+egui = "0.29"
+egui-winit = "0.29"
+egui_demo_lib = "0.28.1" # Same as egui version in egui_wgpu_backend
 egui_wgpu_backend = "0.30"
 epi = "0.17"
 chrono = "0.4"
