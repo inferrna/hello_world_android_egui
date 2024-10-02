@@ -18,6 +18,9 @@ wgpu = { version = "22", default-features = false }
 tracing-subscriber = "0.3"
 log = "*"
 
+[profile.release]
+strip = "debuginfo"
+
 [target.'cfg(debug_assertions)'.dependencies]
 simple_logger = "*"
 android_logger = "0.14.1"
