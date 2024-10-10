@@ -9,8 +9,8 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 egui = "0.29"
 egui-winit = "0.29"
-egui_demo_lib = "0.28.1" # Same as egui version in egui_wgpu_backend
-egui_wgpu_backend = "0.30"
+egui_demo_lib = "0.29" # Same as egui version in egui_wgpu_backend
+egui_wgpu_backend = "0.31"
 epi = "0.17"
 chrono = "0.4"
 pollster = "0.3"
@@ -27,13 +27,13 @@ android_logger = "0.14.1"
 
 # This dependency will only be included when not targeting Android
 [target.'cfg(not(target_os = "android"))'.dependencies]
-winit = { version= "0.30.5", features = ["wayland", "x11"] }
-egui_winit_platform = { version = "0.23", features = ["clipboard"] }
+winit = { version= "0.30", features = ["wayland", "x11"] }
+egui_winit_platform = { version = "0.24", features = ["clipboard"] }
 
 # This dependency will only be included when targeting Android
 [target.'cfg(target_os = "android")'.dependencies]
-winit = { version= "0.30.5", features = ["android-native-activity"] } #default-features = false,
-egui_winit_platform = { version = "0.23", features = ["default_fonts"] }
+winit = { version= "0.30", features = ["android-native-activity"] } #default-features = false,
+egui_winit_platform = { version = "0.24", features = ["default_fonts"] }
 
 [package.metadata.android]
 package = "org.egui.helloworld"
